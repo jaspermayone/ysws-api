@@ -16,14 +16,11 @@ interface Env {
 	SECRET_KEY: string;
 }
 
-let AIRTABLE_API_KEY: string;
 const AIRTABLE_BASE_ID = 'app4Bs8Tjwvk5qcD4';
 const SUBMISSIONS_TABLE_NAME = 'Submissions';
 
 export default {
 	async fetch(request: Request, env: Env, context: ExecutionContext): Promise<Response> {
-		AIRTABLE_API_KEY = `${env.AIRTABLE_KEY}`;
-
 		const { pathname, searchParams } = new URL(request.url);
 
 		if (pathname === '/') {
@@ -34,35 +31,46 @@ export default {
 			if (!authHeader || authHeader !== `Bearer ${env.SECRET_KEY}`) {
 				return new Response('Unauthorized', { status: 401 });
 			}
-			return await handleSubmissionsRequest();
+			return await handleSubmissionsRequest(`${env.AIRTABLE_KEY}`);
 		} else if (pathname === '/update' && request.method === 'POST') {
 			// Check for Authorization header
 			const authHeader = request.headers.get('Authorization');
 			if (!authHeader || authHeader !== `Bearer ${env.SECRET_KEY}`) {
 				return new Response('Unauthorized', { status: 401 });
 			}
-			return await handleUpdateRequest(request);
+			return await handleUpdateRequest(request, `${env.AIRTABLE_KEY}`);
 		} else {
 			return new Response('Not Found', { status: 404 });
 		}
 	},
 } satisfies ExportedHandler<Env>;
 
-async function handleSubmissionsRequest() {
+async function handleSubmissionsRequest(airtablekey: string) {
+	if (!airtablekey || airtablekey === '' || airtablekey === 'undefined' || airtablekey === 'null') {
+		return new Response(JSON.stringify({ error: 'Airtable API key is required' }), {
+			status: 400,
+			headers: {
+				'Content-Type': 'application/json',
+			},
+		});
+	}
+
 	const response = await fetch(
 		`https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${SUBMISSIONS_TABLE_NAME}?fields%5B%5D=SlackUsername&fields%5B%5D=OTP&fields%5B%5D=Slack+ID&fields%5B%5D=Eligibility&filterByFormula=AND(%7BStatus%7D%3D'Pending'%2CNOT(%7BOTP%7D%3D''))`,
 		{
 			headers: {
-				Authorization: `Bearer ${AIRTABLE_API_KEY}`,
+				Authorization: `Bearer ${airtablekey}`,
 				'Content-Type': 'application/json',
 			},
 		},
 	);
 
 	const data: any = await response.json();
-	if (!data.records) {
-		return new Response(JSON.stringify({ error: 'No records found or invalid response from Airtable' }), {
-			status: 404,
+
+	// if !data then return the raw response from Airtable
+	if (!data || !data.records) {
+		return new Response(JSON.stringify(data), {
+			status: 200,
 			headers: {
 				'Content-Type': 'application/json',
 			},
@@ -79,7 +87,7 @@ async function handleSubmissionsRequest() {
 	});
 }
 
-async function handleUpdateRequest(request: any) {
+async function handleUpdateRequest(request: any, airtablekey: string) {
 	const { authenticated, recordId } = await request.json();
 
 	if (!recordId) {
@@ -109,7 +117,7 @@ async function handleUpdateRequest(request: any) {
 		const response = await fetch(`https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${SUBMISSIONS_TABLE_NAME}/${recordId}`, {
 			method: 'PATCH',
 			headers: {
-				Authorization: `Bearer ${AIRTABLE_API_KEY}`,
+				Authorization: `Bearer ${airtablekey}`,
 				'Content-Type': 'application/json',
 			},
 			body: JSON.stringify({ fields }),

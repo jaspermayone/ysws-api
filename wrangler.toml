@@ -3,3 +3,5 @@ name = "hackclub-ysws-api"
 main = "src/index.ts"
 compatibility_date = "2024-08-21"
 compatibility_flags = ["nodejs_compat"]
+
+[vars]
